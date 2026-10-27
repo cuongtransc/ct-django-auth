@@ -36,7 +36,7 @@ def check_sign_in_policy(app_configs, **kwargs):
         try:
             cls = import_string(getattr(settings, name, ''))
             ok = isinstance(cls, type) and issubclass(cls, expected)
-        except ImportError:
+        except (ImportError, AttributeError, TypeError):
             ok = False
         if not ok:
             errors.append(
@@ -82,6 +82,20 @@ def check_sign_in_policy(app_configs, **kwargs):
                 id='ct_auth.E004',
             )
         )
+
+    providers = getattr(settings, 'SOCIALACCOUNT_PROVIDERS', None) or {}
+    for provider, conf in providers.items():
+        if isinstance(conf, dict) and conf.get('VERIFIED_EMAIL', False) is not False:
+            errors.append(
+                Error(
+                    f"SOCIALACCOUNT_PROVIDERS['{provider}']['VERIFIED_EMAIL'] must "
+                    'not be set: it marks every provider address verified and '
+                    'lets anyone claim an invite.',
+                    hint='Remove VERIFIED_EMAIL; also check the database SocialApp '
+                    'settings, which this check cannot see.',
+                    id='ct_auth.E006',
+                )
+            )
 
     for app in settings.INSTALLED_APPS:
         prefix, _, provider = app.rpartition('.')

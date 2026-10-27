@@ -29,6 +29,12 @@ class CheckTests(SimpleTestCase):
         found = [m.id for m in check_sign_in_policy(None)]
         self.assertEqual(found, ['ct_auth.E002'])
 
+    def test_e002_non_string_adapter(self):
+        for value in (42, None, ['x']):
+            with self.subTest(value=value), self.settings(ACCOUNT_ADAPTER=value):
+                found = [m.id for m in check_sign_in_policy(None)]
+                self.assertEqual(found, ['ct_auth.E002'])
+
     @override_settings(SOCIALACCOUNT_ADAPTER='tests.adapters.AppSocialAdapter')
     def test_subclass_adapter_is_accepted(self):
         self.assertEqual(ids(), [])
@@ -51,6 +57,29 @@ class CheckTests(SimpleTestCase):
 
         del settings.SOCIALACCOUNT_ONLY
         self.assertEqual(ids(), ['ct_auth.E005'])
+
+    def test_e006_provider_verified_email(self):
+        providers = {
+            'github': {'APP': {'client_id': 'x', 'secret': 'y'}},
+            'google': {'VERIFIED_EMAIL': True},
+        }
+        with self.settings(SOCIALACCOUNT_PROVIDERS=providers):
+            found = [m for m in check_sign_in_policy(None) if m.id == 'ct_auth.E006']
+        self.assertEqual(len(found), 1)
+        self.assertIn("SOCIALACCOUNT_PROVIDERS['google']", found[0].msg)
+
+    def test_e006_any_value_but_false(self):
+        for value in (True, 'yes', None, 1):
+            providers = {'github': {'VERIFIED_EMAIL': value}}
+            with (
+                self.subTest(value=value),
+                self.settings(SOCIALACCOUNT_PROVIDERS=providers),
+            ):
+                self.assertEqual(ids(), ['ct_auth.E006'])
+
+    @override_settings(SOCIALACCOUNT_PROVIDERS={'github': {'VERIFIED_EMAIL': False}})
+    def test_e006_explicit_false_is_accepted(self):
+        self.assertEqual(ids(), [])
 
     @override_settings()
     def test_w001_provider_without_email(self):
