@@ -10,6 +10,7 @@ from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 import requests
+from allauth.account.models import EmailAddress
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth import get_user_model
 from django.test import override_settings
@@ -123,6 +124,37 @@ class OAuthContractTests(GitHubLoginMixin):
         get_user_model().objects.filter(pk=a.pk).update(email='Eve@Example.com')
         get_user_model().objects.filter(pk=b.pk).update(email='EVE@example.com')
         self.github_login('eve@example.com')
+        self.assertIsNone(self.signed_in_pk())
+
+    def test_exact_duplicate_email_is_refused(self):
+        a = self.make_invitee('dup1@example.com')
+        b = self.make_invitee('dup2@example.com')
+        get_user_model().objects.filter(pk__in=[a.pk, b.pk]).update(
+            email='dup@example.com'
+        )
+        self.github_login('dup@example.com')
+        self.assertIsNone(self.signed_in_pk())
+
+    def test_unverified_address_row_does_not_capture_invite(self):
+        # The attacker exists first and adds the invitee's address to their
+        # own account without verifying it.
+        attacker = self.make_invitee('mallory@example.com')
+        invitee = self.make_invitee('dana@example.com')
+        EmailAddress.objects.create(
+            user=attacker, email='dana@example.com', verified=False
+        )
+        self.github_login('dana@example.com')
+        self.assertNotEqual(self.signed_in_pk(), str(attacker.pk))
+        self.assertEqual(self.signed_in_pk(), str(invitee.pk))
+        self.assertFalse(SocialAccount.objects.filter(user=attacker).exists())
+
+    def test_verified_address_row_on_another_user_is_refused(self):
+        attacker = self.make_invitee('trent@example.com')
+        self.make_invitee('frank@example.com')
+        EmailAddress.objects.create(
+            user=attacker, email='frank@example.com', verified=True
+        )
+        self.github_login('frank@example.com')
         self.assertIsNone(self.signed_in_pk())
 
     def test_unverified_email_does_not_claim_invite(self):
