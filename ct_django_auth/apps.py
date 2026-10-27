@@ -6,4 +6,4 @@ class CtDjangoAuthConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
 
     def ready(self):
-        pass
+        from . import checks  # noqa: F401  (registers the system checks)
