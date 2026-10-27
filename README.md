@@ -38,9 +38,19 @@ SOCIALACCOUNT_ADAPTER = 'ct_django_auth.adapters.InviteOnlySocialAccountAdapter'
 SOCIALACCOUNT_QUERY_EMAIL = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+SOCIALACCOUNT_ONLY = True  # turns off allauth's password, code and reset sign-in
+ACCOUNT_EMAIL_VERIFICATION = 'none'  # allauth requires it with SOCIALACCOUNT_ONLY
 INVITE_ONLY = True  # default when absent; False lets unknown emails sign up
 # SOCIALACCOUNT_LOGIN_ON_GET stays unset (False).
+# No VERIFIED_EMAIL key in SOCIALACCOUNT_PROVIDERS (see E006).
 ```
+
+allauth refuses to start with `SOCIALACCOUNT_ONLY = True` alongside
+`ACCOUNT_LOGIN_BY_CODE_ENABLED = True`, `allauth.mfa`, or an
+`ACCOUNT_EMAIL_VERIFICATION` other than `'none'`. With it, allauth answers a
+POST to `/accounts/login/` with 403 and drops the sign-up, password, email
+management, login-code and password-reset routes (`account_signup`,
+`account_reset_password` and the rest no longer reverse).
 
 Root URLconf, before `admin.site.urls`:
 
@@ -54,9 +64,16 @@ urlpatterns = [
 
 Behaviour:
 
-- An invite is an existing user whose `email` field matches the provider's
-  verified address, in any case. The match uses the `email` field of the user
-  model. Two users differing only by case are treated as no invite.
+- An invite is the one existing user who owns the provider's verified
+  address, in any case: through the user model's email field (allauth's
+  `ACCOUNT_USER_MODEL_EMAIL_FIELD`, `email` by default) or through a
+  *verified* allauth `EmailAddress` row. Unverified `EmailAddress` rows never
+  count. After the case-insensitive database lookup the stored value must equal
+  the provider address under Python `str.lower()`, so Unicode lookalikes that a
+  database folds (Postgres `UPPER('ı') = 'I'`) do not match.
+- Fail closed: two or more distinct users for the provider's verified
+  addresses (exact duplicates, case variants, another user's verified
+  `EmailAddress` row) are treated as no invite.
 - `admin_login` shows Django admin's password form when `DEBUG` is true;
   otherwise it redirects (302) to `account_login`, keeping the query string.
   It uses `django.contrib.admin.site`; a custom `AdminSite` is not supported in
@@ -70,17 +87,22 @@ Behaviour:
 | `ct_auth.E002` | `ACCOUNT_ADAPTER` or `SOCIALACCOUNT_ADAPTER` is not the package's adapter or a subclass |
 | `ct_auth.E003` | `SOCIALACCOUNT_QUERY_EMAIL`, `SOCIALACCOUNT_EMAIL_AUTHENTICATION` or `SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT` is not true |
 | `ct_auth.E004` | `/admin/login/` does not resolve to `ct_django_auth.views.admin_login` |
+| `ct_auth.E005` | `SOCIALACCOUNT_ONLY` is not true: allauth's password, code and reset sign-in would bypass OAuth |
+| `ct_auth.E006` | a `SOCIALACCOUNT_PROVIDERS[<provider>]` dict sets `VERIFIED_EMAIL` to anything but `False`: every provider address would count as verified and anyone could claim an invite |
 | `ct_auth.W001` | a configured provider returns no email (`twitter`, `twitter_oauth2`): a new user signing in through it can never match an invite |
 
 Notes:
 
 - Errors stop `runserver`, `migrate` and Django's test runner. pytest-django
   does not run system checks: run `python manage.py check` in your CI so
-  E001-E004 fail the build.
+  E001-E006 fail the build.
 - E004 looks for the literal path `/admin/login/`. An app that mounts the admin
   elsewhere, or under `i18n_patterns`, will see E004.
 - An `ACCOUNT_ADAPTER` or `SOCIALACCOUNT_ADAPTER` path that cannot be imported
   makes allauth's own check fail with an `ImportError` before E002 is reported.
+- E006 reads only `settings.SOCIALACCOUNT_PROVIDERS`. A `SocialApp` row in the
+  database can carry its own `settings` JSON, which this check cannot see:
+  keep `VERIFIED_EMAIL` out of it too.
 
 ## Templates
 
@@ -97,10 +119,14 @@ directory, ahead of this app's.
 
 `OAuthContractTests` runs the whole sign-in contract against your settings and
 URLconf, with a fake GitHub API (no network). Set `login_redirect_url` and
-implement `make_invitee`. The tests use the GitHub provider's routes, so the
+implement `make_invitee`. `login_redirect_url` must equal the app's
+`LOGIN_REDIRECT_URL`. The tests use the GitHub provider's routes, so the
 project needs `allauth.socialaccount.providers.github` in `INSTALLED_APPS` and
 `path('accounts/', include('allauth.urls'))` in the root URLconf (both shown
-above):
+above). They also expect the settings above, `SOCIALACCOUNT_ONLY = True`
+included: they check that a password or email-only POST to `/accounts/login/`
+signs no one in and sends no code, and that `/accounts/password/reset/` is
+404.
 
 ```python
 # tests/test_contract.py
