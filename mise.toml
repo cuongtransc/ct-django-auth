@@ -1,0 +1,23 @@
+[tools]
+python = "3.13"
+uv = "0.10.4"
+gitleaks = "8.30.1"
+
+[tasks.test]
+run = "uv run pytest -q"
+
+[tasks.lint]
+run = "uv run ruff check . && uv run ruff format --check ."
+
+[tasks.leaks]
+run = "gitleaks dir . --redact --no-banner && gitleaks git . --redact --no-banner"
+
+[tasks."leaks:staged"]
+run = "gitleaks git --staged --redact --no-banner ."
+
+[tasks.hooks]
+run = "git config core.hooksPath .githooks"
+
+[tasks.ci]
+depends = ["lint", "test", "leaks"]
+run = "echo 'ci passed'"
