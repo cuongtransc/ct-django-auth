@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ct-django-auth"
+version = "0.1.0"
+description = "Invite-only, OAuth-only sign-in layer on django-allauth."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    "django>=6.0,<6.1",
+    "django-allauth[socialaccount]>=65.20.1,<66",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-django>=4.9", "ruff>=0.15", "requests>=2.32"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["ct_django_auth"]
+include = ["ct_django_auth/templates/**"]
+
+[tool.uv]
+exclude-newer = "14 days"
+
+[tool.uv.exclude-newer-package]
+django-allauth = "2026-10-21"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = ["docs", ".superpowers"]
+
+[tool.ruff.format]
+quote-style = "single"
