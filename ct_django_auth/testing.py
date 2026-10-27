@@ -172,3 +172,11 @@ class OAuthContractTests(GitHubLoginMixin):
                 {'username': user.get_username(), 'password': 'x9!Kq2#vL'},
             )
         self.assertIsNone(self.signed_in_pk())
+
+    def test_failed_callback_page_offers_sign_in_only(self):
+        resp = self.client.get(
+            '/accounts/github/login/callback/', {'code': 'c', 'state': 'stale'}
+        )
+        self.assertEqual(resp.status_code, 401)
+        self.assertContains(resp, f'href="{reverse("account_login")}"', status_code=401)
+        self.assertNotContains(resp, reverse('account_signup'), status_code=401)
