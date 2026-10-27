@@ -154,3 +154,21 @@ class OAuthContractTests(GitHubLoginMixin):
             resp = self.client.get('/accounts/github/login/callback/', query)
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp['Location'], self.login_redirect_url)
+
+    def test_admin_login_sends_staff_to_oauth_keeping_next(self):
+        with self.settings(DEBUG=False):
+            resp = self.client.get('/admin/login/?next=/admin/')
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], reverse('account_login') + '?next=/admin/')
+
+    def test_admin_password_post_does_not_sign_in(self):
+        user = self.make_invitee('root@example.com')
+        user.is_staff = True
+        user.set_password('x9!Kq2#vL')
+        user.save()
+        with self.settings(DEBUG=False):
+            self.client.post(
+                '/admin/login/',
+                {'username': user.get_username(), 'password': 'x9!Kq2#vL'},
+            )
+        self.assertIsNone(self.signed_in_pk())
