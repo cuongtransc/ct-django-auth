@@ -31,6 +31,7 @@ INSTALLED_APPS += [
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
+    'allauth.socialaccount.providers.github',  # needed by the contract tests
 ]
 ACCOUNT_ADAPTER = 'ct_django_auth.adapters.InviteOnlyAccountAdapter'
 SOCIALACCOUNT_ADAPTER = 'ct_django_auth.adapters.InviteOnlySocialAccountAdapter'
@@ -47,6 +48,7 @@ Root URLconf, before `admin.site.urls`:
 urlpatterns = [
     path('', include('ct_django_auth.urls')),
     path('admin/', admin.site.urls),
+    path('accounts/', include('allauth.urls')),
 ]
 ```
 
@@ -95,7 +97,10 @@ directory, ahead of this app's.
 
 `OAuthContractTests` runs the whole sign-in contract against your settings and
 URLconf, with a fake GitHub API (no network). Set `login_redirect_url` and
-implement `make_invitee`:
+implement `make_invitee`. The tests use the GitHub provider's routes, so the
+project needs `allauth.socialaccount.providers.github` in `INSTALLED_APPS` and
+`path('accounts/', include('allauth.urls'))` in the root URLconf (both shown
+above):
 
 ```python
 # tests/test_contract.py
