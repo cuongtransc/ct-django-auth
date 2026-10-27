@@ -41,6 +41,17 @@ class CheckTests(SimpleTestCase):
     def test_e004_admin_login_not_routed(self):
         self.assertEqual(ids(), ['ct_auth.E004'])
 
+    @override_settings(SOCIALACCOUNT_ONLY=False)
+    def test_e005_socialaccount_only_off(self):
+        self.assertEqual(ids(), ['ct_auth.E005'])
+
+    @override_settings()
+    def test_e005_socialaccount_only_absent(self):
+        from django.conf import settings
+
+        del settings.SOCIALACCOUNT_ONLY
+        self.assertEqual(ids(), ['ct_auth.E005'])
+
     @override_settings()
     def test_w001_provider_without_email(self):
         # The check reads INSTALLED_APPS names; it does not need the app loaded.

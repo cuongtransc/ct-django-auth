@@ -59,6 +59,16 @@ def check_sign_in_policy(app_configs, **kwargs):
                 )
             )
 
+    if getattr(settings, 'SOCIALACCOUNT_ONLY', False) is not True:
+        errors.append(
+            Error(
+                "SOCIALACCOUNT_ONLY must be True: allauth's password, code and "
+                'reset sign-in would bypass OAuth.',
+                hint='Set SOCIALACCOUNT_ONLY = True.',
+                id='ct_auth.E005',
+            )
+        )
+
     try:
         routed = resolve('/admin/login/').func is admin_login
     except Resolver404:

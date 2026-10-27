@@ -13,6 +13,7 @@ import requests
 from allauth.account.models import EmailAddress
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.test import override_settings
 from django.urls import reverse
 
@@ -101,6 +102,28 @@ class OAuthContractTests(GitHubLoginMixin):
         self.assertFalse(
             get_user_model().objects.filter(email='mallory@example.com').exists()
         )
+
+    def test_password_login_does_not_sign_in(self):
+        user = self.make_invitee('pat@example.com')
+        user.set_password('x9!Kq2#vL')
+        user.save()
+        self.client.post(
+            '/accounts/login/',
+            {'login': 'pat@example.com', 'password': 'x9!Kq2#vL'},
+        )
+        self.assertIsNone(self.signed_in_pk())
+
+    def test_login_by_code_is_off(self):
+        self.make_invitee('quinn@example.com')
+        self.client.post('/accounts/login/', {'login': 'quinn@example.com'})
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertIsNone(self.signed_in_pk())
+        resp = self.client.get('/accounts/login/code/confirm/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_password_reset_is_gone(self):
+        resp = self.client.get('/accounts/password/reset/')
+        self.assertEqual(resp.status_code, 404)
 
     def test_invitee_signs_in_and_is_linked(self):
         invitee = self.make_invitee('alice@example.com')
@@ -211,4 +234,4 @@ class OAuthContractTests(GitHubLoginMixin):
         )
         self.assertEqual(resp.status_code, 401)
         self.assertContains(resp, f'href="{reverse("account_login")}"', status_code=401)
-        self.assertNotContains(resp, reverse('account_signup'), status_code=401)
+        self.assertNotContains(resp, '/accounts/signup/', status_code=401)
