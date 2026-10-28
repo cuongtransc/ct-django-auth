@@ -12,8 +12,10 @@ from urllib.parse import parse_qs, urlparse
 import requests
 from allauth.account.models import EmailAddress
 from allauth.socialaccount.models import SocialAccount
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.shortcuts import resolve_url
 from django.test import override_settings
 from django.urls import reverse
 
@@ -82,6 +84,11 @@ class GitHubLoginMixin:
 
 class OAuthContractTests(GitHubLoginMixin):
     login_redirect_url: str
+    # The link the app's dead-end pages offer; defaults to settings.LOGIN_URL.
+    sign_in_url: str | None = None
+
+    def expected_sign_in_url(self):
+        return self.sign_in_url or resolve_url(settings.LOGIN_URL)
 
     def make_invitee(self, email):
         raise NotImplementedError
@@ -122,8 +129,15 @@ class OAuthContractTests(GitHubLoginMixin):
         self.assertEqual(resp.status_code, 404)
 
     def test_password_reset_is_gone(self):
-        resp = self.client.get('/accounts/password/reset/')
-        self.assertEqual(resp.status_code, 404)
+        # 404, or an app redirect away from it; never a form, never a mail.
+        invitee = self.make_invitee('riley@example.com')
+        for resp in (
+            self.client.get('/accounts/password/reset/'),
+            self.client.post('/accounts/password/reset/', {'email': invitee.email}),
+        ):
+            self.assertIn(resp.status_code, (301, 302, 303, 307, 308, 404))
+            self.assertNotIn('password/reset', resp.get('Location', ''))
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_invitee_signs_in_and_is_linked(self):
         invitee = self.make_invitee('alice@example.com')
@@ -214,7 +228,9 @@ class OAuthContractTests(GitHubLoginMixin):
         with self.settings(DEBUG=False):
             resp = self.client.get('/admin/login/?next=/admin/')
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp['Location'], reverse('account_login') + '?next=/admin/')
+        self.assertEqual(
+            resp['Location'], resolve_url(settings.LOGIN_URL) + '?next=/admin/'
+        )
 
     def test_admin_password_post_does_not_sign_in(self):
         user = self.make_invitee('root@example.com')
@@ -233,5 +249,7 @@ class OAuthContractTests(GitHubLoginMixin):
             '/accounts/github/login/callback/', {'code': 'c', 'state': 'stale'}
         )
         self.assertEqual(resp.status_code, 401)
-        self.assertContains(resp, f'href="{reverse("account_login")}"', status_code=401)
+        self.assertContains(
+            resp, f'href="{self.expected_sign_in_url()}"', status_code=401
+        )
         self.assertNotContains(resp, '/accounts/signup/', status_code=401)

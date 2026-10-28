@@ -78,6 +78,10 @@ class CheckTests(SimpleTestCase):
                 self.assertEqual(ids(), ['ct_auth.E006'])
 
     @override_settings(SOCIALACCOUNT_PROVIDERS={'github': {'VERIFIED_EMAIL': False}})
+    @override_settings(SOCIALACCOUNT_PROVIDERS=['github'])
+    def test_e006_non_dict_providers_does_not_raise(self):
+        self.assertNotIn('ct_auth.E006', [m.id for m in check_sign_in_policy(None)])
+
     def test_e006_explicit_false_is_accepted(self):
         self.assertEqual(ids(), [])
 

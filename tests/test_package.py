@@ -4,7 +4,7 @@ import ct_django_auth
 
 
 def test_version():
-    assert ct_django_auth.__version__ == '0.1.0'
+    assert ct_django_auth.__version__ == '0.1.1'
 
 
 def test_app_is_installed_in_test_project():

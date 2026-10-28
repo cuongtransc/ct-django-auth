@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.12"
 
 [options]
-exclude-newer = "2026-10-13T10:35:58.300531Z"
+exclude-newer = "2026-10-14T03:17:26.804306Z"
 exclude-newer-span = "P14D"
 
 [options.exclude-newer-package]
@@ -317,7 +317,7 @@ wheels = [
 
 [[package]]
 name = "ct-django-auth"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "django" },
