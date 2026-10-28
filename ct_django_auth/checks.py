@@ -84,6 +84,8 @@ def check_sign_in_policy(app_configs, **kwargs):
         )
 
     providers = getattr(settings, 'SOCIALACCOUNT_PROVIDERS', None) or {}
+    if not isinstance(providers, dict):
+        providers = {}
     for provider, conf in providers.items():
         if isinstance(conf, dict) and conf.get('VERIFIED_EMAIL', False) is not False:
             errors.append(

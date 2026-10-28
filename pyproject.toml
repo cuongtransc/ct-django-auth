@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ct-django-auth"
-version = "0.1.0"
+version = "0.1.1"
 description = "Invite-only, OAuth-only sign-in layer on django-allauth."
 readme = "README.md"
 license = "MIT"
@@ -24,9 +24,13 @@ include = ["ct_django_auth/templates/**"]
 
 [tool.uv]
 exclude-newer = "14 days"
+# Floors for transitive packages with known advisories below them.
+constraint-dependencies = ["certifi>=2026.10.18"]  # GHSA-6q48-6c7w-9gw2
 
+# Security fixes younger than the cool-off, admitted one package at a time.
 [tool.uv.exclude-newer-package]
 django-allauth = "2026-10-21"
+certifi = "2026-10-21"
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "tests.settings"

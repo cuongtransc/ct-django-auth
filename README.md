@@ -17,7 +17,7 @@ reviewable diff ([ADR 0003](docs/adr/0003-pin-by-commit-sha.md)).
 
 ```toml
 [tool.uv.sources]
-ct-django-auth = { git = "https://github.com/cuongtransc/ct-django-auth", rev = "<40-char commit sha>" }  # v0.1.0
+ct-django-auth = { git = "https://github.com/cuongtransc/ct-django-auth", rev = "<40-char commit sha>" }  # v0.1.1
 ```
 
 ## Configure
@@ -75,9 +75,9 @@ Behaviour:
   addresses (exact duplicates, case variants, another user's verified
   `EmailAddress` row) are treated as no invite.
 - `admin_login` shows Django admin's password form when `DEBUG` is true;
-  otherwise it redirects (302) to `account_login`, keeping the query string.
-  It uses `django.contrib.admin.site`; a custom `AdminSite` is not supported in
-  0.1.0.
+  otherwise it redirects (302) to the app's `LOGIN_URL`, keeping the query
+  string. It uses `django.contrib.admin.site`; a custom `AdminSite` is not
+  supported.
 
 ## System checks
 
@@ -125,8 +125,14 @@ project needs `allauth.socialaccount.providers.github` in `INSTALLED_APPS` and
 `path('accounts/', include('allauth.urls'))` in the root URLconf (both shown
 above). They also expect the settings above, `SOCIALACCOUNT_ONLY = True`
 included: they check that a password or email-only POST to `/accounts/login/`
-signs no one in and sends no code, and that `/accounts/password/reset/` is
-404.
+signs no one in and sends no code, and that `/accounts/password/reset/`
+serves no form and sends no mail (404, or a redirect the app adds).
+
+The failed-callback test checks that the dead-end page links to
+`sign_in_url`, which defaults to the app's `LOGIN_URL`. An app whose pages link
+elsewhere (for example the package's default templates, which link allauth's
+`account_login`, while `LOGIN_URL` points at the app's own page) sets
+`sign_in_url` on its test class.
 
 ```python
 # tests/test_contract.py
