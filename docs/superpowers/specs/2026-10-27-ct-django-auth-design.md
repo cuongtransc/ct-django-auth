@@ -1,7 +1,8 @@
 # ct-django-auth: design
 
 Date: 2026-10-27
-Status: draft, awaiting review
+Status: accepted; implemented in v0.1.0 and v0.1.1. Updated 2026-10-28 to match
+the released code (see "Changes since the first draft" at the end).
 
 ## Purpose
 
@@ -41,8 +42,9 @@ Out (each app keeps these):
   default templates);
 - the user model.
 
-Policy: **OAuth only.** No password form outside `DEBUG`, neither allauth's nor
-Django admin's. `DEBUG` keeps the admin password form for local seed data.
+Policy: **OAuth only.** No password, emailed-code or password-reset sign-in
+outside `DEBUG`, neither allauth's nor Django admin's. `DEBUG` keeps the admin
+password form for local seed data.
 
 ## Supported versions
 
@@ -58,13 +60,13 @@ These are the package's only runtime dependencies.
 ct_django_auth/
   apps.py       CtDjangoAuthConfig: registers the system checks
   adapters.py   InviteOnlyAccountAdapter, InviteOnlySocialAccountAdapter
-  checks.py     ct_auth.E001..E004, ct_auth.W001
+  checks.py     ct_auth.E001..E006, ct_auth.W001
   views.py      admin_login
   urls.py       urlpatterns = [path('admin/login/', admin_login)]
   templates/
     account/signup_closed.html
     socialaccount/authentication_error.html
-  testing.py    OAuthContractTests, fake_github_api()
+  testing.py    OAuthContractTests, GitHubLoginMixin, fake_github_api()
 ```
 
 ### Adapters
@@ -81,9 +83,16 @@ ct_django_auth/
 - `on_authentication_error()`: when the request's user is already signed in,
   raise `ImmediateHttpResponse(redirect(settings.LOGIN_REDIRECT_URL))`;
   otherwise fall through to the error page.
-- `authenticate_by_email()`: allauth's exact match first; if none, a
-  case-insensitive match on each **verified** provider address, accepted only
-  when exactly one user matches.
+- `authenticate_by_email()`: its own lookup, not allauth's. For each
+  **verified** provider address, the candidates are the users whose email
+  field (allauth's `USER_MODEL_EMAIL_FIELD`) matches ignoring case, plus the
+  users owning a **verified** allauth `EmailAddress` row for that address; a
+  candidate counts only if its stored value equals the address after Python's
+  `.lower()` (a database's case folding treats some lookalike characters as
+  equal). The sign-in proceeds only when exactly one distinct user remains
+  across all verified addresses; otherwise it is refused. allauth's own match
+  is not used because it also counts unverified `EmailAddress` rows and returns
+  an arbitrary user when several match.
 
 Apps that need more subclass these (for example, to record a pending sign-up).
 
@@ -92,15 +101,17 @@ Apps that need more subclass these (for example, to record a pending sign-up).
 The package never writes an app's settings. The app keeps these explicit:
 
 ```python
-INSTALLED_APPS += ['allauth', 'allauth.account', 'allauth.socialaccount',
-                   'ct_django_auth']
+INSTALLED_APPS += ['ct_django_auth',  # before allauth: its templates win
+                   'allauth', 'allauth.account', 'allauth.socialaccount']
 ACCOUNT_ADAPTER = 'ct_django_auth.adapters.InviteOnlyAccountAdapter'
 SOCIALACCOUNT_ADAPTER = 'ct_django_auth.adapters.InviteOnlySocialAccountAdapter'
 SOCIALACCOUNT_QUERY_EMAIL = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+SOCIALACCOUNT_ONLY = True  # no allauth password, code, reset or email pages
 INVITE_ONLY = env.bool('INVITE_ONLY', default=True)
 # SOCIALACCOUNT_LOGIN_ON_GET stays unset (False).
+# LOGIN_URL: the app's sign-in page; admin_login sends staff there.
 ```
 
 and in the root URLconf, before `admin.site.urls`:
@@ -118,15 +129,19 @@ path('admin/', admin.site.urls),
 | `ct_auth.E002` | `ACCOUNT_ADAPTER` or `SOCIALACCOUNT_ADAPTER` is not the package's adapter or a subclass of it |
 | `ct_auth.E003` | any of `SOCIALACCOUNT_QUERY_EMAIL`, `SOCIALACCOUNT_EMAIL_AUTHENTICATION`, `SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT` is not true |
 | `ct_auth.E004` | `/admin/login/` does not resolve to `ct_django_auth.views.admin_login` |
+| `ct_auth.E005` | `SOCIALACCOUNT_ONLY` is not true: allauth's password, code and reset sign-in would bypass OAuth |
+| `ct_auth.E006` | a `SOCIALACCOUNT_PROVIDERS[<provider>]` dict sets `VERIFIED_EMAIL` to anything but `False`: every provider address would count as verified |
 | `ct_auth.W001` | a configured provider returns no email (for example `twitter_oauth2`): a new user signing in through it can never match an invite |
 
-Errors stop `runserver`, `migrate` and the test runner, so drift fails CI.
+Errors stop `runserver`, `migrate` and Django's test runner, so drift fails CI
+(pytest-django does not run checks: apps run `manage.py check` in CI). A check
+never raises on a malformed setting; it reports it or skips it.
 
 ### `admin_login`
 
 - `DEBUG` true → Django admin's own login view (password form).
-- otherwise → `302` to `reverse('account_login')`, keeping the query string, so
-  `?next=` survives.
+- otherwise → `302` to the app's `LOGIN_URL` (`resolve_url`), keeping the query
+  string, so `?next=` survives. (v0.1.0 used `reverse('account_login')`.)
 
 ### Default templates
 
@@ -147,9 +162,11 @@ path in their own `templates/` directory.
   allauth flow runs without network.
 - `OAuthContractTests`: a mixin for a Django `TestCase`. The app sets
   `login_redirect_url` and implements `make_invitee(email) -> User` (which
-  creates a user the app treats as fully allowed). The mixin runs the whole
-  contract against the app's settings and URLconf: every row of the table in
-  "Sign-in flow" below.
+  creates a user the app treats as fully allowed). `sign_in_url` (default
+  `LOGIN_URL`) is the link the dead-end pages must offer. The mixin runs the
+  whole contract against the app's settings and URLconf: every row of the
+  table in "Sign-in flow" below. The password-reset row accepts 404 or an app
+  redirect, as long as no form is served and no mail is sent.
 
 ## Sign-in flow
 
@@ -158,13 +175,16 @@ path in their own `templates/` directory.
 | Provider button | POST with CSRF to `/accounts/<provider>/login/`; a GET never starts OAuth | E001 + app template |
 | Callback, `SocialAccount` already linked | Signed in | allauth |
 | Callback, verified email matches exactly one user, any case | `SocialAccount` linked, signed in | adapter |
-| Verified email matches two or more users differing only by case | Not linked; treated as no invite | adapter |
+| Verified addresses point at two or more users (case variants, exact duplicates, another user's verified `EmailAddress` row) | Not linked; treated as no invite | adapter |
+| Another user's **unverified** `EmailAddress` row equals the address | Ignored | adapter |
 | Provider email not verified | Not used for matching | adapter |
 | No match, `INVITE_ONLY` true | `signup_closed` page; no `User` row | adapter + template |
 | No match, `INVITE_ONLY` false | New `User`; the app decides what it may see | app |
 | Callback error (refresh, stale state, cancelled at provider), already signed in | Redirect to `LOGIN_REDIRECT_URL` | adapter |
 | Callback error, anonymous | `authentication_error` page, 401 | template |
-| `/admin/login/`, not `DEBUG` | 302 to `account_login`, `next` kept | view |
+| `/admin/login/`, not `DEBUG` | 302 to `LOGIN_URL`, `next` kept | view |
+| POST `/accounts/login/` (password or email only) | Refused (403), no code mailed | `SOCIALACCOUNT_ONLY` (E005) |
+| `/accounts/password/reset/`, `/accounts/email/`, `/accounts/login/code/confirm/` | 404 (or an app redirect for reset) | `SOCIALACCOUNT_ONLY` (E005) |
 | `/admin/login/`, `DEBUG` | Admin password form | view |
 
 Rule: **fail closed.** An uncertain match is a refusal. A missing app template
@@ -187,21 +207,27 @@ Controls:
 - CI needs no secrets: it does not publish anything;
 - GitHub: `main` protected (pull request, green CI, no force-push), secret
   scanning with push protection, Dependabot alerts on;
-- release tags are signed (`git tag -s vX.Y.Z`);
-- commits use the GitHub no-reply address, not a personal email.
+- release tags are annotated (`git tag -a vX.Y.Z`); signing them
+  (`git tag -s`) is the target once a signing key is set up — v0.1.0 and
+  v0.1.1 are unsigned, which consumers do not depend on (they pin SHAs);
+- commits made from a local clone use the GitHub no-reply address; merges done
+  in the GitHub web UI carry the owner's account email, which the owner
+  accepts.
 
 Consumers pin a commit, not a tag:
 
 ```toml
 [tool.uv.sources]
-ct-django-auth = { git = "https://github.com/cuongtransc/ct-django-auth", rev = "<40-char sha>" }  # v0.1.0
+ct-django-auth = { git = "https://github.com/cuongtransc/ct-django-auth", rev = "<40-char sha>" }  # v0.1.1
 ```
 
 A tag can be moved; a SHA cannot. A version bump is a reviewable diff of the
 SHA.
 
-Tests cover the refusals: unverified email, ambiguous match, GET-initiated
-OAuth, an off-site `next`.
+Tests cover the refusals: unverified email, unverified or foreign
+`EmailAddress` rows, ambiguous and duplicate matches, lookalike addresses,
+GET-initiated OAuth, password/code/reset sign-in, a provider-wide
+`VERIFIED_EMAIL`, an off-site `next`.
 
 ## Testing
 
@@ -221,8 +247,8 @@ One merge request per app:
 1. Add the pinned dependency; keep the app's supply-chain policy (cool-off,
    audit).
 2. Point the adapters at the package (or at app subclasses of them); add
-   `ct_django_auth` to `INSTALLED_APPS`; include `ct_django_auth.urls` before
-   the admin.
+   `ct_django_auth` to `INSTALLED_APPS` before `allauth`; set
+   `SOCIALACCOUNT_ONLY = True`; include `ct_django_auth.urls` before the admin.
 3. Delete the app's own copies: adapters, admin-login view, refusal tests now
    covered by the contract.
 4. Add a `TestCase` that inherits `OAuthContractTests`.
@@ -239,3 +265,20 @@ provider address it will use, or it is locked out.
 Semantic versioning from `0.1.0`. A new system check or a stricter default is a
 minor version while `0.x`; the changelog says which settings an app must
 change.
+
+## Changes since the first draft
+
+Recorded when the spec was updated to the released code (2026-10-28):
+
+- `INSTALLED_APPS` lists `ct_django_auth` before `allauth`. The draft's order
+  served allauth's bare dead-end pages, contrary to the fail-closed rule.
+- `authenticate_by_email` no longer starts with allauth's exact match: that
+  match counts unverified `EmailAddress` rows and picks an arbitrary user when
+  several match (found in the whole-branch review before v0.1.0).
+- `SOCIALACCOUNT_ONLY = True` and checks E005 and E006 were added: without them
+  allauth kept password, emailed-code and reset sign-in, and a provider-wide
+  `VERIFIED_EMAIL` let any address claim an invite.
+- v0.1.1: `admin_login` redirects to `LOGIN_URL`; the contract gained
+  `sign_in_url` and accepts an app redirect for the reset path; E006 tolerates a
+  non-dict `SOCIALACCOUNT_PROVIDERS`.
+- Release tags are annotated, not yet signed.

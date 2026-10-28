@@ -32,3 +32,11 @@ address. Plans that name consuming apps live in those apps' private repositories
 | Private repository on the apps' git host, installed from git | Every app's CI and Dockerfile would need a deploy token to clone it. |
 | Private package registry | Needs a token at build time and a release pipeline; more machinery than three consumers justify. |
 | Vendored copy in each app with a drift check | A fix still lands as one commit per app, the cost the package exists to remove. |
+
+## Updates
+
+### 2026-10-28: web-UI merges carry the owner's email
+
+Merges done in the GitHub web UI record the owner's account email, not the
+no-reply address. The owner accepts this: the address was already public.
+Commits made from a local clone still use the no-reply address.

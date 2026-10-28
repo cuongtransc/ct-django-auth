@@ -27,3 +27,11 @@ every upgrade is a visible diff in a merge request.
 |-------------|----------------|
 | `tag = "vX.Y.Z"` | Readable, but a moved tag silently changes what the next image build installs. |
 | `branch = "main"` | Every build could pull unreviewed code into the sign-in path. |
+
+## Updates
+
+### 2026-10-28: tags are not signed yet
+
+v0.1.0 and v0.1.1 were tagged with `git tag -a` because no signing key was set
+up. Apps pin the SHA, as decided above, so they are unaffected; signing returns
+once a key exists.
