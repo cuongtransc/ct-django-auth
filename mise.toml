@@ -15,9 +15,6 @@ run = "gitleaks dir . --redact --no-banner && gitleaks git . --redact --no-banne
 [tasks."leaks:staged"]
 run = "gitleaks git --staged --redact --no-banner ."
 
-[tasks.hooks]
-run = "git config core.hooksPath .githooks"
-
 [tasks.ci]
 depends = ["lint", "test", "leaks"]
 run = "echo 'ci passed'"
