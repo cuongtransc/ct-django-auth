@@ -10,7 +10,7 @@ run = "uv run pytest -q"
 run = "uv run ruff check . && uv run ruff format --check ."
 
 # betterleaks loads .gitleaks.toml only when it is asked to: without --config the
-# allowlist below is dropped and the scan fails on the fake fixture password.
+# allowlist in that file is dropped and the scan fails on the fake fixture password.
 [tasks.leaks]
 run = "betterleaks dir . --config .gitleaks.toml --redact --no-banner && betterleaks git . --config .gitleaks.toml --redact --no-banner"
 

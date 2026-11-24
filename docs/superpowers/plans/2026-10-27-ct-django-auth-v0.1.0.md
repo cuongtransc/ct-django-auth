@@ -69,6 +69,8 @@ def test_app_is_installed_in_test_project():
   - `hooks`: `git config core.hooksPath .githooks`
   - `ci`: depends on `lint`, `test`, `leaks`; runs `echo 'ci passed'`
 
+  Create `.gitleaks.toml` in the same step, because every task above passes `--config .gitleaks.toml`: betterleaks reads gitleaks' config file name, but only when a scan is told to. The file keeps the built-in rules (`[extend] useDefault = true`; a config file otherwise replaces them and the scan finds nothing) and adds one exception: the built-in `generic-password` rule flags the obviously fake fixture password the contract tests sign in with, in `ct_django_auth/testing.py` and in this plan wherever it quotes that snippet, so that one rule allows that one password in those two paths only.
+
 - [ ] **Step 4: Create `.githooks/pre-commit`** (executable, `#!/usr/bin/env bash`, `set -euo pipefail`) whose only command is `mise run leaks:staged`. Step 8 activates it with `mise run hooks`.
 
 - [ ] **Step 5: Create the test project.** `tests/settings.py`:
