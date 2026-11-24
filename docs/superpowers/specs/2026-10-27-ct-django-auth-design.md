@@ -202,8 +202,12 @@ Fixtures use `example.com` / `example.test` and the account `octo`.
 
 Controls:
 
-- gitleaks as a pre-commit hook and in CI; a full-history scan
-  (`gitleaks git`) before the first push and before every release tag;
+- betterleaks as a pre-commit hook and in CI; a full-history scan
+  (`betterleaks git`) before the first push and before every release tag.
+  betterleaks reads `.gitleaks.toml` only when a scan passes `--config`, so every
+  scan here passes it; the file keeps gitleaks' name because that is the name
+  betterleaks looks for, keeps the built-in rules, and allows one rule on one
+  obviously fake fixture password;
 - CI needs no secrets: it does not publish anything;
 - GitHub: `main` protected (pull request, green CI, no force-push), secret
   scanning with push protection, Dependabot alerts on;
@@ -238,7 +242,7 @@ GET-initiated OAuth, password/code/reset sign-in, a provider-wide
   itself is tested.
 - A test per system check: each fires on the bad setting and stays silent on
   the good one.
-- CI matrix: Python 3.12 and 3.13 × Django 6.0; ruff; gitleaks.
+- CI matrix: Python 3.12 and 3.13 × Django 6.0; ruff; betterleaks.
 
 ## Adopting the package in an app
 

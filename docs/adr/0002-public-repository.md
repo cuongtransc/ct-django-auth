@@ -21,9 +21,27 @@ secret and no business logic, only a generic sign-in policy.
 
 Everything committed is published: no consumer names, domains, IPs, emails,
 internal paths or real-looking secrets, in code, fixtures, docs or commit
-metadata. gitleaks runs before every commit, in CI, and over the full history
-before the first push and every release tag. Commits use the GitHub no-reply
-address. Plans that name consuming apps live in those apps' private repositories.
+metadata. The secret scanner runs before every commit, in CI, and over the full
+history before the first push and every release tag. Commits use the GitHub
+no-reply address. Plans that name consuming apps live in those apps' private
+repositories.
+
+### 2026-11-24: the secret scanner is betterleaks
+
+The scanner is betterleaks 1.10.1, not gitleaks. It takes gitleaks' command line,
+its TOML config and its JSON, and it is the only scanner the owner's machines
+carry, so one scanner covers every repository instead of two. The decision above
+is unchanged: the scan runs before every commit, in CI, and over the full history
+before the first push and every release tag.
+
+`.gitleaks.toml` keeps its name because that is the file betterleaks reads, is
+read only when a scan passes `--config .gitleaks.toml` (the mise tasks, the
+pre-commit hook and CI all do), and keeps the built-in rules. It adds one
+exception: betterleaks' `generic-password` rule flags the obviously fake fixture
+password the package's own contract tests sign in with, in
+`ct_django_auth/testing.py` and in the plan that quotes it, so that one rule
+allows that one password in those two files. Every other rule still scans them,
+and `generic-password` still fires in every other file.
 
 ## Alternatives considered
 
