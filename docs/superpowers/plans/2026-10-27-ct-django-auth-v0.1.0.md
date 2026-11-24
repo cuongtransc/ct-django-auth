@@ -6,7 +6,7 @@
 
 **Architecture:** A reusable Django app `ct_django_auth`. Apps keep their settings explicit; the package's system checks fail on policy drift. The contract-test mixin in `ct_django_auth/testing.py` is both the package's own behavioural suite (run against a minimal project in `tests/`) and what each consuming app inherits.
 
-**Tech Stack:** Python 3.12/3.13, Django 6.0, django-allauth 65.20.x, uv, pytest + pytest-django, ruff, gitleaks, mise, GitHub Actions.
+**Tech Stack:** Python 3.12/3.13, Django 6.0, django-allauth 65.20.x, uv, pytest + pytest-django, ruff, betterleaks, mise, GitHub Actions.
 
 **Spec:** `docs/superpowers/specs/2026-10-27-ct-django-auth-design.md`
 
@@ -61,13 +61,15 @@ def test_app_is_installed_in_test_project():
 
 - [ ] **Step 2: Create `pyproject.toml`** with: build backend hatchling (package `ct_django_auth`, include `ct_django_auth/templates/**`); the Global Constraints' metadata and dependencies; `[dependency-groups] dev = ["pytest>=8", "pytest-django>=4.9", "ruff>=0.15", "requests>=2.32"]`; the uv policy from Global Constraints; `[tool.pytest.ini_options] DJANGO_SETTINGS_MODULE = "tests.settings"`, `pythonpath = ["."]`; `[tool.ruff]` per Global Constraints.
 
-- [ ] **Step 3: Create `mise.toml`**: `[tools] python = "3.13"`, `uv` pinned to the exact version `uv --version` prints, `gitleaks = "8.30.1"`. Tasks:
+- [ ] **Step 3: Create `mise.toml`**: `[tools] python = "3.13"`, `uv` pinned to the exact version `uv --version` prints, `betterleaks = "1.10.1"`. Tasks:
   - `test`: `uv run pytest -q`
   - `lint`: `uv run ruff check . && uv run ruff format --check .`
-  - `leaks`: `gitleaks dir . --redact --no-banner && gitleaks git . --redact --no-banner`
-  - `leaks:staged`: `gitleaks git --staged --redact --no-banner .`
+  - `leaks`: `betterleaks dir . --config .gitleaks.toml --redact --no-banner && betterleaks git . --config .gitleaks.toml --redact --no-banner`
+  - `leaks:staged`: `betterleaks git --staged --config .gitleaks.toml --redact --no-banner .`
   - `hooks`: `git config core.hooksPath .githooks`
   - `ci`: depends on `lint`, `test`, `leaks`; runs `echo 'ci passed'`
+
+  Create `.gitleaks.toml` in the same step, because every task above passes `--config .gitleaks.toml`: betterleaks reads gitleaks' config file name, but only when a scan is told to. The file keeps the built-in rules (`[extend] useDefault = true`; a config file otherwise replaces them and the scan finds nothing) and adds one exception: the built-in `generic-password` rule flags the obviously fake fixture password the contract tests sign in with, in `ct_django_auth/testing.py` and in this plan wherever it quotes that snippet, so that one rule allows that one password in those two paths only.
 
 - [ ] **Step 4: Create `.githooks/pre-commit`** (executable, `#!/usr/bin/env bash`, `set -euo pipefail`) whose only command is `mise run leaks:staged`. Step 8 activates it with `mise run hooks`.
 
@@ -140,7 +142,7 @@ SOCIALACCOUNT_PROVIDERS = {
   Expected: `2 passed`.
 
 - [ ] **Step 9: Run** `mise run lint && mise run leaks`
-  Expected: ruff clean; gitleaks `no leaks found` twice.
+  Expected: ruff clean; betterleaks `no leaks found` twice.
 
 - [ ] **Step 10: Commit**
 
@@ -559,7 +561,7 @@ git commit -m "feat: default dead-end templates"
 
 - [ ] **Step 2: Fill `CHANGELOG.md`** `## 0.1.0` with one line per feature (adapters, checks E001–E004/W001, admin_login, templates, contract tests).
 
-- [ ] **Step 3: Write `.github/workflows/ci.yml`**: on `push` to `main` and `pull_request`; `permissions: contents: read`; job `test` with matrix `python: ['3.12', '3.13']` running checkout (with `fetch-depth: 0` so gitleaks sees history), `astral-sh/setup-uv` with that Python, `uv sync --all-groups --locked`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest -q`; job `leaks` installing gitleaks 8.30.1 from its GitHub release tarball with the release's published SHA-256 verified, then `gitleaks git . --redact --no-banner`. Resolve each action's SHA with `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` and pin `uses: <owner>/<repo>@<sha> # <tag>`.
+- [ ] **Step 3: Write `.github/workflows/ci.yml`**: on `push` to `main` and `pull_request`; `permissions: contents: read`; job `test` with matrix `python: ['3.12', '3.13']` running checkout (with `fetch-depth: 0` so betterleaks sees history), `astral-sh/setup-uv` with that Python, `uv sync --all-groups --locked`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run pytest -q`; job `leaks` installing betterleaks 1.10.1 from its official GitHub release tarball with the release's published SHA-256 verified, then `betterleaks git . --config .gitleaks.toml --redact --no-banner`. Resolve each action's SHA with `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` and pin `uses: <owner>/<repo>@<sha> # <tag>`.
 
 - [ ] **Step 4: Run** `mise run ci`
   Expected: `ci passed`.
@@ -579,7 +581,7 @@ git commit -m "docs: README, changelog and CI workflow"
 
 Every step here is outward-facing. Each needs the owner's explicit go-ahead in chat; the executor stops before Step 2 and asks.
 
-- [ ] **Step 1: Final local gate**: `mise run ci` green; `gitleaks git . --redact --no-banner` → `no leaks found`; `git log --format='%an <%ae>' | sort -u` → only `Cuong Tran <…@users.noreply.github.com>`.
+- [ ] **Step 1: Final local gate**: `mise run ci` green; `betterleaks git . --config .gitleaks.toml --redact --no-banner` → `no leaks found`; `git log --format='%an <%ae>' | sort -u` → only `Cuong Tran <…@users.noreply.github.com>`.
 - [ ] **Step 2 (owner):** create the public repository `cuongtransc/ct-django-auth` on GitHub, empty (no README, no license).
 - [ ] **Step 3 (owner):** on GitHub enable secret scanning + push protection, private vulnerability reporting, Dependabot alerts; protect `main` (pull request required, status checks `test` and `leaks` required, no force-push); and in personal settings, "Block command line pushes that expose my email".
 - [ ] **Step 4:** push `feat/v0.1.0`, open a PR to `main` with the `git-mr` skill; wait for CI green; the owner merges.

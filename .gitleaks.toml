@@ -1,0 +1,33 @@
+# Secret-scan rules. The scanner is betterleaks; the file keeps gitleaks' name
+# because that is the name betterleaks reads. It reads it only when a scan passes
+# `--config .gitleaks.toml`, which every scan here does: the `leaks` and
+# `leaks:staged` tasks in mise.toml, the pre-commit hook that runs the second one,
+# and the `leaks` job in CI. A bare `betterleaks git .` uses the built-in rules
+# alone and reports the fixture this file allows.
+#
+# `gitleaks:allow` comments are read too, wherever a single line needs one.
+
+title = "ct-django-auth"
+
+# A config file replaces the built-in rules unless it extends them, and an empty
+# rule set finds nothing — not even a real token. Keep these two lines.
+[extend]
+useDefault = true
+
+# The built-in `generic-password` rule flags the obviously fake fixture password
+# this package's own test double signs in with (see
+# `test_password_login_does_not_sign_in`) and the plan that quotes that snippet.
+# ADR 0002 allows obviously fake fixtures. Match only that exact password AND
+# those two paths; other passwords and all other rules still scan those files.
+[[rules]]
+id = "generic-password"
+
+  [[rules.allowlists]]
+  description = "fake test password in the contract tests and quoted plan"
+  condition = "AND"
+  regexTarget = "secret"
+  regexes = ['''^x9!Kq2#vL$''']
+  paths = [
+    '''^ct_django_auth/testing\.py$''',
+    '''^docs/superpowers/plans/2026-10-27-ct-django-auth-v0\.1\.0\.md$''',
+  ]

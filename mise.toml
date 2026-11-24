@@ -1,7 +1,7 @@
 [tools]
 python = "3.13"
 uv = "0.10.4"
-gitleaks = "8.30.1"
+betterleaks = "1.10.1"
 
 [tasks.test]
 run = "uv run pytest -q"
@@ -9,11 +9,13 @@ run = "uv run pytest -q"
 [tasks.lint]
 run = "uv run ruff check . && uv run ruff format --check ."
 
+# betterleaks loads .gitleaks.toml only when it is asked to: without --config the
+# allowlist in that file is dropped and the scan fails on the fake fixture password.
 [tasks.leaks]
-run = "gitleaks dir . --redact --no-banner && gitleaks git . --redact --no-banner"
+run = "betterleaks dir . --config .gitleaks.toml --redact --no-banner && betterleaks git . --config .gitleaks.toml --redact --no-banner"
 
 [tasks."leaks:staged"]
-run = "gitleaks git --staged --redact --no-banner ."
+run = "betterleaks git --staged --config .gitleaks.toml --redact --no-banner ."
 
 [tasks.ci]
 depends = ["lint", "test", "leaks"]
